@@ -186,58 +186,63 @@ class MqttAdapter extends Adapter {
   }
 
   async _connect(): Promise<this> {
-    const mqttOptions: MqttAdapterConfig = await this.resolveProtocolConfig(
-      'mqtt'
-    )
-    const auth: MqttAuthConfig = await this.getAuthConfig(mqttOptions?.auth)
-    const subscribedChannels = this.getSubscribedChannels()
-    const mqttServerBinding = this.AsyncAPIServer.bindings().get('mqtt')
-    const mqtt5ServerBinding = this.AsyncAPIServer.bindings().get('mqtt5')
+    try {
+      const mqttOptions: MqttAdapterConfig = await this.resolveProtocolConfig(
+        'mqtt'
+      )
+      const auth: MqttAuthConfig = await this.getAuthConfig(mqttOptions?.auth)
+      const subscribedChannels = this.getSubscribedChannels()
+      const mqttServerBinding = this.AsyncAPIServer.bindings().get('mqtt')
+      const mqtt5ServerBinding = this.AsyncAPIServer.bindings().get('mqtt5')
 
-    const { userAndPasswordSecurityReq, X509SecurityReq } =
-      this.getSecurityReqs()
+      const { userAndPasswordSecurityReq, X509SecurityReq } =
+        this.getSecurityReqs()
 
-    const url = new URL(this.AsyncAPIServer.url())
+      const url = new URL(this.AsyncAPIServer.url())
 
-    const protocolVersion = parseInt(
-      this.AsyncAPIServer.protocolVersion() || '4'
-    )
-    const serverBinding =
-      protocolVersion === 5 ? mqtt5ServerBinding : mqttServerBinding
+      const protocolVersion = parseInt(
+        this.AsyncAPIServer.protocolVersion() || '4'
+      )
+      const serverBinding =
+        protocolVersion === 5 ? mqtt5ServerBinding : mqttServerBinding
 
-    this.client = await this.initializeClient({
-      url,
-      auth,
-      serverBinding,
-      protocolVersion,
-      userAndPasswordSecurityReq,
-      X509SecurityReq,
-    })
-
-    await this.listenToEvents({ protocolVersion })
-
-    const connectClient = (): Promise<this> => {
-      return new Promise((resolve) => {
-        this.client.on('connect', (connAckPacket) => {
-          const isSessionResume = connAckPacket.sessionPresent
-
-          if (!this.firstConnect) {
-            this.checkFirstConnect()
-          }
-
-          const shouldSubscribe =
-            !isSessionResume && Array.isArray(subscribedChannels)
-
-          if (shouldSubscribe) {
-            this.subscribe(subscribedChannels)
-          }
-
-          resolve(this)
-        })
+      this.client = await this.initializeClient({
+        url,
+        auth,
+        serverBinding,
+        protocolVersion,
+        userAndPasswordSecurityReq,
+        X509SecurityReq,
       })
-    }
 
-    return connectClient()
+      await this.listenToEvents({ protocolVersion })
+
+      const connectClient = (): Promise<this> => {
+        return new Promise((resolve) => {
+          this.client.on('connect', (connAckPacket) => {
+            const isSessionResume = connAckPacket.sessionPresent
+
+            if (!this.firstConnect) {
+              this.checkFirstConnect()
+            }
+
+            const shouldSubscribe =
+              !isSessionResume && Array.isArray(subscribedChannels)
+
+            if (shouldSubscribe) {
+              this.subscribe(subscribedChannels)
+            }
+
+            resolve(this)
+          })
+        })
+      }
+
+      return connectClient()
+    } catch (error) {
+      console.error(error)
+      throw error
+    }
   }
 
   _send(message: GleeMessage): Promise<void> {

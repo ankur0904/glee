@@ -18,61 +18,66 @@ class SocketIOAdapter extends Adapter {
   }
 
   async _connect(): Promise<this> {
-    const config = await this.resolveProtocolConfig('ws')
-    const websocketOptions = config?.server
-    const serverUrl: URL = new URL(this.serverUrlExpanded)
-    const asyncapiServerPort: number = serverUrl.port
-      ? Number(serverUrl.port)
-      : 80
-    const optionsPort: number = websocketOptions?.port
-    const port: number = optionsPort || asyncapiServerPort
+    try {
+      const config = await this.resolveProtocolConfig('ws')
+      const websocketOptions = config?.server
+      const serverUrl: URL = new URL(this.serverUrlExpanded)
+      const asyncapiServerPort: number = serverUrl.port
+        ? Number(serverUrl.port)
+        : 80
+      const optionsPort: number = websocketOptions?.port
+      const port: number = optionsPort || asyncapiServerPort
 
-    const serverOptions: { [key: string]: any } = {
-      path: serverUrl.pathname || '/',
-      serveClient: false,
-      transports: ['websocket'],
-    }
-
-    if (websocketOptions.httpServer) {
-      const server = websocketOptions.httpServer
-      if (!optionsPort && String(server.address().port) !== String(port)) {
-        console.error(
-          `Your custom HTTP server is listening on port ${
-            server.address().port
-          } but your AsyncAPI file says it must listen on ${port}. Please fix the inconsistency.`
-        )
-        process.exit(1)
+      const serverOptions: { [key: string]: any } = {
+        path: serverUrl.pathname || '/',
+        serveClient: false,
+        transports: ['websocket'],
       }
-      this.server = new Server(server, serverOptions)
-    } else {
-      this.server = new Server({
-        ...serverOptions,
-        ...{
-          cors: {
-            origin: true,
+
+      if (websocketOptions.httpServer) {
+        const server = websocketOptions.httpServer
+        if (!optionsPort && String(server.address().port) !== String(port)) {
+          console.error(
+            `Your custom HTTP server is listening on port ${
+              server.address().port
+            } but your AsyncAPI file says it must listen on ${port}. Please fix the inconsistency.`
+          )
+          process.exit(1)
+        }
+        this.server = new Server(server, serverOptions)
+      } else {
+        this.server = new Server({
+          ...serverOptions,
+          ...{
+            cors: {
+              origin: true,
+            },
           },
-        },
+        })
+      }
+
+      this.server.on('connect', (socket) => {
+        this.emit('server:ready', {
+          name: this.name(),
+          adapter: this,
+          connection: socket,
+          channels: this.channelNames,
+        })
+
+        socket.onAny((eventName, payload) => {
+          const msg = this._createMessage(eventName, payload)
+          this.emit('message', msg, socket)
+        })
       })
+
+      if (!websocketOptions.httpServer) {
+        this.server.listen(port)
+      }
+      return this
+    } catch (error) {
+      console.error('An error occurred while connecting:', error)
+      throw error
     }
-
-    this.server.on('connect', (socket) => {
-      this.emit('server:ready', {
-        name: this.name(),
-        adapter: this,
-        connection: socket,
-        channels: this.channelNames,
-      })
-
-      socket.onAny((eventName, payload) => {
-        const msg = this._createMessage(eventName, payload)
-        this.emit('message', msg, socket)
-      })
-    })
-
-    if (!websocketOptions.httpServer) {
-      this.server.listen(port)
-    }
-    return this
   }
 
   async _send(message: GleeMessage): Promise<void> {

@@ -29,57 +29,62 @@ class WsClientAdapter extends Adapter {
   }
 
   private async _connect(): Promise<this> {
-    const channelsOnThisServer = this.getWsChannels()
+    try{
+      const channelsOnThisServer = this.getWsChannels()
 
-    debug("connecting to ", this.serverName)
-    for (const channelName of channelsOnThisServer) {
-      let headers = {}
-      const authConfig = await clientAuthConfig(this.serverName)
-      const gleeAuth = new GleeAuth(
-        this.AsyncAPIServer,
-        this.parsedAsyncAPI,
-        this.serverName,
-        authConfig
-      )
+      debug("connecting to ", this.serverName)
+      for (const channelName of channelsOnThisServer) {
+        let headers = {}
+        const authConfig = await clientAuthConfig(this.serverName)
+        const gleeAuth = new GleeAuth(
+          this.AsyncAPIServer,
+          this.parsedAsyncAPI,
+          this.serverName,
+          authConfig
+        )
 
-      const protocol = this.AsyncAPIServer.protocol()
-      const serverHost = this.AsyncAPIServer.host()
-      const channel = this.parsedAsyncAPI.channels().get(channelName)
-      const channelAddress = applyAddressParameters(channel)
-      let url = new URL(`${protocol}://${serverHost}${channelAddress}`)
-      if (authConfig) {
-        const modedAuth = await gleeAuth.processClientAuth({ url, headers, query: {} })
-        headers = modedAuth.headers
-        url = modedAuth.url
-      }
-      this.clients.push({
-        channel: channelName,
-        client: new ws(url, { headers }),
-        binding: this.parsedAsyncAPI.channels().get(channelName).bindings().get('ws'),
-      })
-    }
-
-    for (const { client, channel } of this.clients) {
-      client.on('open', () => {
-        this.emit('connect', {
-          name: this.name(),
-          adapter: this,
-          connection: client,
-          channels: this.channelNames,
+        const protocol = this.AsyncAPIServer.protocol()
+        const serverHost = this.AsyncAPIServer.host()
+        const channel = this.parsedAsyncAPI.channels().get(channelName)
+        const channelAddress = applyAddressParameters(channel)
+        let url = new URL(`${protocol}://${serverHost}${channelAddress}`)
+        if (authConfig) {
+          const modedAuth = await gleeAuth.processClientAuth({ url, headers, query: {} })
+          headers = modedAuth.headers
+          url = modedAuth.url
+        }
+        this.clients.push({
+          channel: channelName,
+          client: new ws(url, { headers }),
+          binding: this.parsedAsyncAPI.channels().get(channelName).bindings().get('ws'),
         })
-      })
+      }
 
-      client.on('message', (data) => {
-        const msg = this._createMessage(channel, data)
-        this.emit('message', msg, client)
-      })
+      for (const { client, channel } of this.clients) {
+        client.on('open', () => {
+          this.emit('connect', {
+            name: this.name(),
+            adapter: this,
+            connection: client,
+            channels: this.channelNames,
+          })
+        })
 
-      client.on('error', (err) => {
-        console.log('GETING ERROR')
-        this.emit('error', err)
-      })
+        client.on('message', (data) => {
+          const msg = this._createMessage(channel, data)
+          this.emit('message', msg, client)
+        })
+
+        client.on('error', (err) => {
+          console.log('GETING ERROR')
+          this.emit('error', err)
+        })
+      }
+      return this
+    }catch (error) {
+      console.error('An error occurred while connecting:', error)
+      throw error
     }
-    return this
   }
 
   private getWsChannels() {

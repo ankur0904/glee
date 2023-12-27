@@ -164,15 +164,20 @@ class HttpAdapter extends Adapter {
   }
 
   async _connect(): Promise<this> {
-    const config = await this.resolveProtocolConfig('http')
-    const httpOptions = config?.server
-    const httpServer = httpOptions?.httpServer || http.createServer()
-    const asyncapiServerPort = new URL(this.serverUrlExpanded).port || 80
-    const port = asyncapiServerPort
-    httpServer.on('request', this._handleRequest)
-    httpServer.listen(port)
-    this.emit('server:ready', { name: this.name(), adapter: this })
-    return this
+    try {
+      const config = await this.resolveProtocolConfig('http')
+      const httpOptions = config?.server
+      const httpServer = httpOptions?.httpServer || http.createServer()
+      const asyncapiServerPort = new URL(this.serverUrlExpanded).port || 80
+      const port = asyncapiServerPort
+      httpServer.on('request', this._handleRequest)
+      httpServer.listen(port)
+      this.emit('server:ready', { name: this.name(), adapter: this })
+      return this
+    } catch (error) {
+      console.error(error)
+      throw error
+    }
   }
   _getOperationBindings(channel: ChannelInterface) {
     return channel.operations().filterByReceive().map(operation => operation.bindings().get("http")?.json())
